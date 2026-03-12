@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''app/routes/assets.py''\\).read\\(\\)\\); ast.parse\\(open\\(''app/routes/clients.py''\\).read\\(\\)\\); ast.parse\\(open\\(''app/models.py''\\).read\\(\\)\\); ast.parse\\(open\\(''app/__init__.py''\\).read\\(\\)\\); ast.parse\\(open\\(''config.py''\\).read\\(\\)\\); ast.parse\\(open\\(''seed.py''\\).read\\(\\)\\); ast.parse\\(open\\(''run.py''\\).read\\(\\)\\); print\\(''All Python files parse OK''\\)\")",
+      "Bash(pip install:*)",
+      "Bash(docker compose:*)",
+      "Bash(grep -v \"^backend-1  | $\")",
+      "Bash(curl -s http://localhost:5000/api/assets?page=1)",
+      "Bash(docker build:*)",
+      "Bash(docker run:*)"
+    ]
+  }
+}
