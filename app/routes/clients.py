@@ -55,6 +55,9 @@ def update_client(client_id):
 def delete_client(client_id):
     client = Client.query.get_or_404(client_id)
 
+    if client.assets:
+        return jsonify({'error': 'Cannot delete a client with assigned assets'}), 400
+
     db.session.delete(client)
     db.session.commit()
     return jsonify({'message': 'Client deleted'}), 200
