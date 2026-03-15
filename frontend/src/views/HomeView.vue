@@ -13,24 +13,37 @@ const stats = ref({
 const loading = ref(true)
 
 onMounted(async () => {
-  const [assetsData, clientsData] = await Promise.all([
-    getAssets({ page: 1 }),
-    getClients(),
-  ])
+  try {
+    const [assetsData, clientsData] = await Promise.all([
+      getAssets({ page: 1 }),
+      getClients(),
+    ])
 
-  stats.value.totalAssets = assetsData.total
-  stats.value.totalClients = clientsData.clients.length
+    stats.value.totalAssets = assetsData.total
+    stats.value.totalClients = clientsData.clients.length
 
-  // Count by status — fetch all pages to tally (simplified: count from first page sample)
-  const statusCounts = { active: 0, inactive: 0, retired: 0 }
-  assetsData.assets.forEach((a) => {
-    if (statusCounts[a.status] !== undefined) statusCounts[a.status]++
-  })
-  stats.value.activeAssets = statusCounts.active
-  stats.value.inactiveAssets = statusCounts.inactive
-  stats.value.retiredAssets = statusCounts.retired
+    const remainingPages = Array.from(
+      { length: Math.max(0, assetsData.pages - 1) },
+      (_, index) => getAssets({ page: index + 2 })
+    )
+    const additionalPages = await Promise.all(remainingPages)
+    const allAssets = [
+      ...assetsData.assets,
+      ...additionalPages.flatMap((page) => page.assets),
+    ]
 
-  loading.value = false
+    const statusCounts = { active: 0, inactive: 0, retired: 0 }
+    allAssets.forEach((a) => {
+      if (statusCounts[a.status] !== undefined) statusCounts[a.status]++
+    })
+    stats.value.activeAssets = statusCounts.active
+    stats.value.inactiveAssets = statusCounts.inactive
+    stats.value.retiredAssets = statusCounts.retired
+  } catch (err) {
+    console.error(err)
+  } finally {
+    loading.value = false
+  }
 })
 </script>
 

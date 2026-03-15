@@ -44,6 +44,7 @@ const handleDelete = async (asset) => {
 }
 
 const goToPage = (page) => {
+  if (page < 1 || page > totalPages.value || page === currentPage.value) return
   currentPage.value = page
   fetchAssets()
 }
