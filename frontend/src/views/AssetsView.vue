@@ -1,23 +1,50 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue'
-import { getAssets, toggleAsset, deleteAsset } from '../api/index.js'
+import { useRoute, useRouter } from 'vue-router'
+import { getAssets, toggleAsset, deleteAsset, downloadAssetsCsv } from '../api/index.js'
 import AssetTable from '../components/AssetTable.vue'
+
+const route = useRoute()
+const router = useRouter()
+const parsePage = (value) => {
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1
+}
+const queryValue = (value) => typeof value === 'string' ? value : ''
+const assetTypeOptions = ['workstation', 'server', 'network', 'peripheral']
+const statusOptions = ['active', 'inactive', 'retired']
 
 const assets = ref([])
 const total = ref(0)
-const currentPage = ref(1)
+const currentPage = ref(parsePage(route.query.page))
 const totalPages = ref(1)
-const search = ref('')
+const search = ref(queryValue(route.query.search))
+const assetType = ref(queryValue(route.query.type))
+const statusFilter = ref(queryValue(route.query.status))
 const loading = ref(false)
 const error = ref(null)
 
 const formatDate = (dateStr) => dateStr ? dateStr.split('T')[0] : 'Never'
 
+const syncRoute = () => {
+  const query = {}
+  if (search.value) query.search = search.value
+  if (assetType.value) query.type = assetType.value
+  if (statusFilter.value) query.status = statusFilter.value
+  if (currentPage.value > 1) query.page = String(currentPage.value)
+  router.replace({ query })
+}
+
 const fetchAssets = async () => {
   loading.value = true
   error.value = null
   try {
-    const data = await getAssets({ search: search.value, page: currentPage.value })
+    const data = await getAssets({
+      search: search.value,
+      type: assetType.value,
+      status: statusFilter.value,
+      page: currentPage.value,
+    })
     assets.value = data.assets.map((a) => ({
       ...a,
       last_seen_formatted: formatDate(a.last_seen),
@@ -43,14 +70,36 @@ const handleDelete = async (asset) => {
   fetchAssets()
 }
 
+const handleExport = () => {
+  downloadAssetsCsv({
+    search: search.value,
+    type: assetType.value,
+    status: statusFilter.value,
+  })
+}
+
 const goToPage = (page) => {
   if (page < 1 || page > totalPages.value || page === currentPage.value) return
   currentPage.value = page
+  syncRoute()
   fetchAssets()
 }
 
 watch(search, () => {
   currentPage.value = 1
+  syncRoute()
+  fetchAssets()
+})
+
+watch(assetType, () => {
+  currentPage.value = 1
+  syncRoute()
+  fetchAssets()
+})
+
+watch(statusFilter, () => {
+  currentPage.value = 1
+  syncRoute()
   fetchAssets()
 })
 
@@ -64,6 +113,9 @@ onMounted(fetchAssets)
         <h1 class="h3 mb-0">Assets</h1>
         <p class="text-muted mb-0">{{ total }} total asset{{ total !== 1 ? 's' : '' }}</p>
       </div>
+      <button class="btn btn-outline-secondary ms-auto me-2" @click="handleExport">
+        <i class="bi bi-download me-1"></i>Export CSV
+      </button>
       <router-link to="/assets/new" class="btn btn-primary ms-auto">
         <i class="bi bi-plus-lg me-1"></i>Add Asset
       </router-link>
@@ -86,11 +138,22 @@ onMounted(fetchAssets)
               />
             </div>
           </div>
-          <!--
-            Feature 3: Add "Asset Type" and "Status" filter dropdowns here.
-            The backend already accepts ?type= and ?status= query params on GET /api/assets.
-            Wire them up so selecting a filter re-fetches the list reactively.
-          -->
+          <div class="col-sm-4 col-lg-3">
+            <select v-model="assetType" class="form-select">
+              <option value="">All Types</option>
+              <option v-for="type in assetTypeOptions" :key="type" :value="type" class="text-capitalize">
+                {{ type }}
+              </option>
+            </select>
+          </div>
+          <div class="col-sm-4 col-lg-3">
+            <select v-model="statusFilter" class="form-select">
+              <option value="">All Statuses</option>
+              <option v-for="status in statusOptions" :key="status" :value="status" class="text-capitalize">
+                {{ status }}
+              </option>
+            </select>
+          </div>
         </div>
       </div>
     </div>

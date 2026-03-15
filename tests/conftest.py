@@ -1,6 +1,6 @@
 import pytest
 from app import create_app, db
-from app.models import Client, Asset
+from app.models import Asset, Client
 
 
 @pytest.fixture

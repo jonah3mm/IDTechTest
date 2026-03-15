@@ -1,29 +1,63 @@
-from flask import Blueprint, jsonify, request
+import csv
+from io import StringIO
+
+from flask import Blueprint, Response, jsonify, request
 from app import db
-from app.models import Asset
+from app.models import Asset, AssetStatusChange
 
 assets_bp = Blueprint('assets', __name__, url_prefix='/api')
 
 PER_PAGE = 10
 
 
-@assets_bp.route('/assets', methods=['GET'])
-def list_assets():
-    page = request.args.get('page', 1, type=int)
-    search = request.args.get('search', '').strip()
-    asset_type = request.args.get('type', '').strip()
-    status = request.args.get('status', '').strip()
+def _asset_filters():
+    return {
+        'search': request.args.get('search', '').strip(),
+        'type': request.args.get('type', '').strip(),
+        'status': request.args.get('status', '').strip(),
+    }
+
+
+def _build_asset_query(filters=None):
+    filters = filters or _asset_filters()
 
     query = Asset.query
 
-    if search:
-        query = query.filter(Asset.name.ilike(f"%{search}%"))
+    if filters['search']:
+        query = query.filter(Asset.name.ilike(f"%{filters['search']}%"))
 
-    if asset_type:
-        query = query.filter(Asset.asset_type == asset_type)
+    if filters['type']:
+        query = query.filter(Asset.asset_type == filters['type'])
 
-    if status:
-        query = query.filter(Asset.status == status)
+    if filters['status']:
+        query = query.filter(Asset.status == filters['status'])
+
+    return query
+
+
+def _requester_ip():
+    forwarded_for = request.headers.get('X-Forwarded-For', '')
+    if forwarded_for:
+        return forwarded_for.split(',')[0].strip()
+    return request.remote_addr or 'unknown'
+
+
+def _log_status_change(asset, previous_status, new_status):
+    if previous_status == new_status:
+        return
+
+    db.session.add(AssetStatusChange(
+        asset_id=asset.id,
+        previous_status=previous_status,
+        new_status=new_status,
+        requester_ip=_requester_ip(),
+    ))
+
+
+@assets_bp.route('/assets', methods=['GET'])
+def list_assets():
+    page = request.args.get('page', 1, type=int)
+    query = _build_asset_query()
 
     total = query.count()
 
@@ -39,10 +73,57 @@ def list_assets():
     })
 
 
+@assets_bp.route('/assets/export', methods=['GET'])
+def export_assets():
+    assets = _build_asset_query().order_by(Asset.name).all()
+
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        'ID',
+        'Name',
+        'Type',
+        'Status',
+        'Client',
+        'Serial Number',
+        'Assigned To',
+        'Last Seen',
+        'Notes',
+        'Created At',
+    ])
+
+    for asset in assets:
+        writer.writerow([
+            asset.id,
+            asset.name,
+            asset.asset_type,
+            asset.status,
+            asset.client.name if asset.client else '',
+            asset.serial_number or '',
+            asset.assigned_to or '',
+            asset.last_seen.isoformat() if asset.last_seen else '',
+            asset.notes or '',
+            asset.created_at.isoformat(),
+        ])
+
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': 'attachment; filename=assets.csv'},
+    )
+
+
 @assets_bp.route('/assets/<int:asset_id>', methods=['GET'])
 def get_asset(asset_id):
     asset = Asset.query.get_or_404(asset_id)
     return jsonify(asset.to_dict())
+
+
+@assets_bp.route('/assets/<int:asset_id>/audit', methods=['GET'])
+def get_asset_audit(asset_id):
+    Asset.query.get_or_404(asset_id)
+    changes = AssetStatusChange.query.filter_by(asset_id=asset_id).order_by(AssetStatusChange.created_at.desc()).all()
+    return jsonify({'audit': [change.to_dict() for change in changes]})
 
 
 @assets_bp.route('/assets', methods=['POST'])
@@ -107,6 +188,7 @@ def delete_asset(asset_id):
 @assets_bp.route('/assets/<int:asset_id>/toggle', methods=['POST'])
 def toggle_asset_status(asset_id):
     asset = Asset.query.get_or_404(asset_id)
+    previous_status = asset.status
 
     if asset.status == 'active':
         asset.status = 'inactive'
@@ -114,6 +196,7 @@ def toggle_asset_status(asset_id):
         asset.status = 'active'
     # retired assets cannot be toggled further
 
+    _log_status_change(asset, previous_status, asset.status)
     db.session.commit()
     return jsonify(asset.to_dict())
 
@@ -123,6 +206,8 @@ def decommission_asset(asset_id):
     asset = Asset.query.get_or_404(asset_id)
     if asset.status == 'retired':
         return jsonify({'error': 'Asset is already retired'}), 400
+    previous_status = asset.status
     asset.status = 'retired'
+    _log_status_change(asset, previous_status, asset.status)
     db.session.commit()
     return jsonify(asset.to_dict())

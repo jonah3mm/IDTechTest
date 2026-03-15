@@ -85,10 +85,15 @@ def test_create_asset_missing_fields(flask_client):
 
     Required fields: name, asset_type, client_id
     """
-    # TODO: send a POST with an empty (or incomplete) body and assert:
-    #   - status code is 400
-    #   - response JSON contains an 'error' key
-    pass
+    response = flask_client.post(
+        '/api/assets',
+        data=json.dumps({'name': 'Incomplete Asset'}),
+        content_type='application/json',
+    )
+
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert 'error' in data
 
 
 # ---------------------------------------------------------------------------
@@ -116,8 +121,11 @@ def test_toggle_inactive_asset_becomes_active(flask_client):
       - status code is 200
       - returned status is 'active'
     """
-    # TODO: implement this test
-    pass
+    response = flask_client.post('/api/assets/2/toggle')
+    assert response.status_code == 200
+
+    data = json.loads(response.data)
+    assert data['status'] == 'active'
 
 
 # ---------------------------------------------------------------------------
@@ -158,5 +166,47 @@ def test_delete_client_with_assets_fails(flask_client):
       - status code is 409
       - response JSON contains an 'error' key
     """
-    # TODO: implement this test
-    pass
+    response = flask_client.delete('/api/clients/1')
+    assert response.status_code == 409
+
+    data = json.loads(response.data)
+    assert 'error' in data
+
+
+def test_export_assets_returns_csv(flask_client):
+    """GET /api/assets/export returns a CSV file with the applied filters."""
+    response = flask_client.get('/api/assets/export?search=Workstation&type=workstation')
+    assert response.status_code == 200
+    assert response.mimetype == 'text/csv'
+    assert 'attachment; filename=assets.csv' == response.headers['Content-Disposition']
+
+    csv_text = response.data.decode('utf-8')
+    assert 'Name' in csv_text
+    assert 'Workstation Alpha' in csv_text
+    assert 'Primary Server' not in csv_text
+
+
+def test_asset_audit_log_records_status_changes(flask_client):
+    """Status changes are logged and exposed via GET /api/assets/<id>/audit."""
+    toggle_response = flask_client.post('/api/assets/1/toggle')
+    assert toggle_response.status_code == 200
+
+    audit_response = flask_client.get('/api/assets/1/audit')
+    assert audit_response.status_code == 200
+
+    data = json.loads(audit_response.data)
+    assert len(data['audit']) == 1
+    assert data['audit'][0]['previous_status'] == 'active'
+    assert data['audit'][0]['new_status'] == 'inactive'
+    assert 'requester_ip' in data['audit'][0]
+
+
+def test_get_assets_filters_by_type_and_status(flask_client):
+    """GET /api/assets honors type and status query params."""
+    response = flask_client.get('/api/assets?type=network&status=active')
+    assert response.status_code == 200
+
+    data = json.loads(response.data)
+    assert len(data['assets']) == 2
+    assert all(asset['asset_type'] == 'network' for asset in data['assets'])
+    assert all(asset['status'] == 'active' for asset in data['assets'])

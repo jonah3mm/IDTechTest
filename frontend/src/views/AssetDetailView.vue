@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getAsset, toggleAsset, decommissionAsset, deleteAsset } from '../api/index.js'
+import { getAsset, getAssetAudit, toggleAsset, decommissionAsset, deleteAsset } from '../api/index.js'
 import StatusBadge from '../components/StatusBadge.vue'
 
 const route = useRoute()
@@ -9,11 +9,29 @@ const router = useRouter()
 const asset = ref(null)
 const loading = ref(true)
 const error = ref(null)
+const auditEntries = ref([])
+const auditLoading = ref(false)
+const auditError = ref(null)
+
+const loadAudit = async () => {
+  auditLoading.value = true
+  auditError.value = null
+  try {
+    const data = await getAssetAudit(route.params.id)
+    auditEntries.value = data.audit
+  } catch (err) {
+    auditError.value = 'Failed to load audit history.'
+  } finally {
+    auditLoading.value = false
+  }
+}
 
 const loadAsset = async () => {
   loading.value = true
+  error.value = null
   try {
     asset.value = await getAsset(route.params.id)
+    await loadAudit()
   } catch (err) {
     error.value = err.response?.status === 404 ? 'Asset not found.' : 'Failed to load asset.'
   } finally {
@@ -111,11 +129,35 @@ onMounted(loadAsset)
         </div>
       </div>
 
-      <!--
-        Feature 2: Audit Log
-        Add a section below that fetches and displays the status change history
-        for this asset from GET /api/assets/<id>/audit.
-      -->
+      <div class="card mb-4">
+        <div class="card-header fw-semibold">Audit History</div>
+        <div v-if="auditLoading" class="card-body text-muted">
+          Loading audit history…
+        </div>
+        <div v-else-if="auditError" class="card-body">
+          <div class="alert alert-danger mb-0">{{ auditError }}</div>
+        </div>
+        <ul v-else-if="auditEntries.length" class="list-group list-group-flush">
+          <li v-for="entry in auditEntries" :key="entry.id" class="list-group-item">
+            <div class="d-flex justify-content-between align-items-start gap-3">
+              <div>
+                <div class="fw-semibold text-capitalize">
+                  {{ entry.previous_status }} to {{ entry.new_status }}
+                </div>
+                <div class="text-muted small">
+                  Requester IP: {{ entry.requester_ip }}
+                </div>
+              </div>
+              <div class="text-muted small text-end">
+                {{ formatDate(entry.timestamp) }}
+              </div>
+            </div>
+          </li>
+        </ul>
+        <div v-else class="card-body text-muted">
+          No status changes recorded yet.
+        </div>
+      </div>
 
       <div class="d-flex gap-2 flex-wrap">
         <button
