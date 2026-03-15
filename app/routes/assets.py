@@ -51,9 +51,12 @@ def create_asset():
     if not data:
         return jsonify({'error': 'Request body must be JSON'}), 400
 
-    name = data['name']
-    asset_type = data['asset_type']
-    client_id = data['client_id']
+    name = data.get('name', '').strip()
+    asset_type = data.get('asset_type', '').strip()
+    client_id = data.get('client_id')
+
+    if not name or not asset_type or not client_id:
+        return jsonify({'error': 'Name, asset type, and client_id are required'}), 400
 
     asset = Asset(
         name=name,
