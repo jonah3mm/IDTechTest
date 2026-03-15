@@ -27,7 +27,7 @@ def list_assets():
 
     total = query.count()
 
-    offset = page * PER_PAGE
+    offset = (page - 1) * PER_PAGE
     assets = query.order_by(Asset.name).offset(offset).limit(PER_PAGE).all()
 
     return jsonify({
