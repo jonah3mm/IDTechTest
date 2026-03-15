@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getAssets, toggleAsset, deleteAsset, downloadAssetsCsv } from '../api/index.js'
 import AssetTable from '../components/AssetTable.vue'
@@ -23,6 +23,7 @@ const assetType = ref(queryValue(route.query.type))
 const statusFilter = ref(queryValue(route.query.status))
 const loading = ref(false)
 const error = ref(null)
+let searchDebounceId = null
 
 const formatDate = (dateStr) => dateStr ? dateStr.split('T')[0] : 'Never'
 
@@ -87,8 +88,11 @@ const goToPage = (page) => {
 
 watch(search, () => {
   currentPage.value = 1
-  syncRoute()
-  fetchAssets()
+  if (searchDebounceId) clearTimeout(searchDebounceId)
+  searchDebounceId = window.setTimeout(() => {
+    syncRoute()
+    fetchAssets()
+  }, 300)
 })
 
 watch(assetType, () => {
@@ -104,6 +108,10 @@ watch(statusFilter, () => {
 })
 
 onMounted(fetchAssets)
+
+onBeforeUnmount(() => {
+  if (searchDebounceId) clearTimeout(searchDebounceId)
+})
 </script>
 
 <template>
