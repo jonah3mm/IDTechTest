@@ -17,6 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ ./app/
 COPY config.py run.py seed.py ./
+COPY --from=frontend-builder /frontend/dist ./app/static/dist/
 
 EXPOSE 5000
 
